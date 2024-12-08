@@ -1,171 +1,156 @@
 if (!require("shiny")) install.packages("shiny")
-if (!require("leaflet")) install.packages("leaflet")
-if (!require("leaflet.extras")) install.packages("leaflet.extras") 
 if (!require("dplyr")) install.packages("dplyr")
 if (!require("readr")) install.packages("readr")
-if (!require("lubridate")) install.packages("lubridate")
 if (!require("ggplot2")) install.packages("ggplot2")
-if (!require("tidyr")) install.packages("tidyr")
+if (!require("forcats")) install.packages("forcats")
 
+# Load necessary libraries
 library(shiny)
-library(leaflet)
-library(leaflet.extras)
+library(ggplot2)
 library(dplyr)
 library(readr)
-library(lubridate)
-library(ggplot2)
-library(tidyr)
+library(forcats) # For ordering factors
 
-# Load data, not every row becuase it is too big
-taxi_data <- read_csv("data.csv", n_max = 100000)
+# Load the dataset
+data <- read_csv("nyc_taxi.csv")
 
-# Define nyc boundaries to drop locations outside the area
-nyc_boundaries <- list(
-  min_lat = 40.5774,  
-  max_lat = 45.01585, 
-  min_long = -74.25909, 
-  max_long = -73.700272
-)
+# Preprocess the data
+data$tpep_pickup_datetime <- as.POSIXct(data$tpep_pickup_datetime)
+data$tpep_dropoff_datetime <- as.POSIXct(data$tpep_dropoff_datetime)
 
-# filter rows inside nyc boundaries
-taxi_pickup <- taxi_data %>%
-  filter(!is.na(pickup_latitude) & !is.na(pickup_longitude) & 
-           pickup_latitude >= nyc_boundaries$min_lat & 
-           pickup_latitude <= nyc_boundaries$max_lat & 
-           pickup_longitude >= nyc_boundaries$min_long & 
-           pickup_longitude <= nyc_boundaries$max_long) %>%
-  select(pickup_latitude, pickup_longitude, tpep_pickup_datetime)
+# Add derived columns
+data$day_of_week <- weekdays(data$tpep_pickup_datetime) # Day of the week
+data$trip_duration <- as.numeric(difftime(data$tpep_dropoff_datetime, data$tpep_pickup_datetime, units = "mins"))
 
-# use datetimes
-taxi_pickup$tpep_pickup_datetime <- ymd_hms(taxi_pickup$tpep_pickup_datetime)
-#taxi_pickup$tpep_dropoff_datetime <- ymd_hms(taxi_pickup$tpep_dropoff_datetime)
+# Remove rows with missing or invalid trip_duration values
+data <- data %>%
+  filter(!is.na(trip_duration) & trip_duration >= 0) # Remove NA and negative trip_duration
 
+# Balance the dataset: Ensure equal rows for all days
+set.seed(123)
+balanced_data <- data %>%
+  group_by(day_of_week) %>%
+  sample_n(size = min(1000, n()), replace = FALSE) %>%
+  ungroup()
 
-# shiny app
+# Reorder days of the week from Monday to Sunday
+ordered_days <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+balanced_data$day_of_week <- factor(balanced_data$day_of_week, levels = ordered_days)
+
+# Define UI
 ui <- fluidPage(
-  titlePanel("NYC Taxi Data Visualization"),
+  titlePanel("NYC Taxi Data Analysis"),
+  
   tabsetPanel(
-    tabPanel("Heatmap",
+    # Proportion visualization tab
+    tabPanel("Passenger Proportion by Day",
+             plotOutput("proportion_plot", height = "600px")
+    ),
+    
+    # Detailed insights tab
+    tabPanel("Detailed Insights by Day",
              sidebarLayout(
                sidebarPanel(
-                 selectInput("day_of_week", "Select Day of the Week:",
-                             choices = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
-                             selected = "Monday"),
-                 sliderInput("hour_of_day", "Select Hour of the Day:",
-                             min = 0, max = 23, value = c(0, 23), step = 1)
+                 selectInput(
+                   "selected_day",
+                   "Select a Day:",
+                   choices = ordered_days,
+                   selected = "Monday"
+                 )
                ),
                mainPanel(
-                 leafletOutput("heatmap", height = "600px")
+                 h4("Aggregated Statistics"),
+                 verbatimTextOutput("day_stats"),
+                 plotOutput("day_trip_distribution")
                )
              )
     ),
     
-    tabPanel("Daily Trip Statistics",
-             sidebarLayout(
-               sidebarPanel(
-                 dateRangeInput("date_range", "Select Date Range:",
-                                start = min(taxi_pickup$tpep_pickup_datetime),
-                                end = max(taxi_pickup$tpep_pickup_datetime)),
-                 selectInput("week_day_1", "Select First Day of the Week:",
-                             choices = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
-                             selected = "Monday"),
-                 selectInput("week_day_2", "Select Second Day of the Week:",
-                             choices = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
-                             selected = "Tuesday"),
-                 actionButton("update_stats", "Update Plot")
-               ),
-               mainPanel(
-                 plotOutput("trip_plot")
-               )
-             )
+    # Trip Duration vs Total Amount tab
+    tabPanel("Trip Duration vs Total Amount",
+             plotOutput("trip_duration_plot", height = "600px")
     )
   )
 )
 
+# Define server logic
 server <- function(input, output) {
-  output$heatmap <- renderLeaflet({
-    # filter trips with specific day and time
-    filtered_data <- taxi_pickup %>%
-      filter(wday(tpep_pickup_datetime) == match(input$day_of_week, 
-                                                 c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))) %>%
-      filter(hour(tpep_pickup_datetime) >= input$hour_of_day[1] & hour(tpep_pickup_datetime) <= input$hour_of_day[2])
+  # Proportion plot: Passenger count by day of week
+  output$proportion_plot <- renderPlot({
+    prop_data <- balanced_data %>%
+      group_by(day_of_week, passenger_count) %>%
+      summarise(count = n(), .groups = "drop") %>%
+      group_by(day_of_week) %>%
+      mutate(percentage = count / sum(count) * 100)
     
-    #create map
-    m <- leaflet(data = filtered_data) %>%
-      addProviderTiles(providers$CartoDB.Positron)
-    
-    # verify there is filtered data
-    if (nrow(filtered_data) > 0) {
-      bounds <- getBounds(filtered_data$pickup_latitude, filtered_data$pickup_longitude)
-      m <- m %>%
-        setView(lng = bounds$center_long, lat = bounds$center_lat, zoom = 12) %>%
-        fitBounds(lng1 = bounds$min_long, lat1 = bounds$min_lat, lng2 = bounds$max_long, lat2 = bounds$max_lat)
-    } else {
-      m <- m %>%
-        setView(lng = -74.0060, lat = 40.7128, zoom = 12) # Vista por defecto
-    }
-    
-    # heatmap
-    m %>%
-      addHeatmap(
-        lng = ~pickup_longitude,
-        lat = ~pickup_latitude,
-        blur = 20,
-        max = 0.05,
-        radius = 15
+    ggplot(prop_data, aes(x = day_of_week, y = percentage, fill = as.factor(passenger_count))) +
+      geom_bar(stat = "identity", position = "stack", width = 0.7) +
+      scale_fill_brewer(palette = "Set3", name = "Passenger Count") +
+      labs(
+        title = "Proportion of Trips by Passenger Count for Each Day",
+        x = "Day of the Week",
+        y = "Percentage of Trips (%)"
+      ) +
+      theme_minimal(base_size = 14) +
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major.x = element_blank()
       )
   })
   
-  observeEvent(input$update_stats, {
+  # Aggregated statistics for the selected day
+  output$day_stats <- renderPrint({
+    selected_data <- balanced_data %>%
+      filter(day_of_week == input$selected_day)
     
-    filtered_data <- taxi_pickup %>%
-      filter(tpep_pickup_datetime >= input$date_range[1],
-             tpep_pickup_datetime <= input$date_range[2])
+    stats <- selected_data %>%
+      group_by(passenger_count) %>%
+      summarise(
+        trips = n(),
+        avg_trip_distance = mean(trip_distance, na.rm = TRUE),
+        avg_fare_amount = mean(fare_amount, na.rm = TRUE),
+        avg_total_amount = mean(total_amount, na.rm = TRUE),
+        avg_trip_duration = mean(trip_duration, na.rm = TRUE),
+        .groups = "drop"
+      )
     
-    filtered_data_1 <- filtered_data %>%
-      filter(wday(tpep_pickup_datetime) == match(input$week_day_1, 
-                                                 c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")))
+    stats
+  })
+  
+  # Distribution of trips by passenger count for the selected day
+  output$day_trip_distribution <- renderPlot({
+    selected_data <- balanced_data %>%
+      filter(day_of_week == input$selected_day)
     
-    filtered_data_2 <- filtered_data %>%
-      filter(wday(tpep_pickup_datetime) == match(input$week_day_2, 
-                                                 c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")))
-    
-    trips_per_hour_1 <- filtered_data_1 %>%
-      group_by(hour = hour(tpep_pickup_datetime)) %>%
-      summarize(total_trips = n(), .groups = 'drop')
-    
-    trips_per_hour_2 <- filtered_data_2 %>%
-      group_by(hour = hour(tpep_pickup_datetime)) %>%
-      summarize(total_trips = n(), .groups = 'drop')
-    
-    combined_data <- full_join(trips_per_hour_1, trips_per_hour_2, by = "hour", 
-                               suffix = c("_day1", "_day2")) %>%
-      tidyr::pivot_longer(cols = starts_with("total_trips"), names_to = "day", values_to = "total_trips")
-    
-    output$trip_plot <- renderPlot({
-      ggplot(combined_data, aes(x = hour, y = total_trips, fill = day)) +
-        geom_bar(stat = "identity", position = "dodge", alpha = 0.7) +
-        labs(title = paste("Comparison of Trips on", input$week_day_1, "and", input$week_day_2),
-             x = "Hour of the Day",
-             y = "Total Trips") +
-        scale_fill_manual(values = c("blue", "orange"), labels = c(input$week_day_1, input$week_day_2)) +
-        theme_minimal() +
-        theme(legend.title = element_blank())
-    })
+    ggplot(selected_data, aes(x = as.factor(passenger_count))) +
+      geom_bar(fill = "skyblue", width = 0.7) +
+      labs(
+        title = paste("Trip Distribution by Passenger Count on", input$selected_day),
+        x = "Passenger Count",
+        y = "Number of Trips"
+      ) +
+      theme_minimal(base_size = 14) +
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 0, hjust = 0.5)
+      )
+  })
+  
+  # Trip Duration vs Total Amount plot
+  output$trip_duration_plot <- renderPlot({
+    ggplot(balanced_data, aes(x = trip_duration, y = total_amount)) +
+      geom_point(alpha = 0.5) +
+      geom_smooth(method = "lm", col = "blue", se = FALSE) +
+      labs(
+        title = "Trip Duration vs Total Amount",
+        x = "Trip Duration (minutes)",
+        y = "Total Amount (USD)"
+      ) +
+      theme_minimal(base_size = 14) +
+      theme(plot.title = element_text(hjust = 0.5))
   })
 }
 
-# obtain limits to center the map
-getBounds <- function(latitudes, longitudes) {
-  return(list(
-    min_lat = min(latitudes, na.rm = TRUE),
-    max_lat = max(latitudes, na.rm = TRUE),
-    min_long = min(longitudes, na.rm = TRUE),
-    max_long = max(longitudes, na.rm = TRUE),
-    center_lat = mean(latitudes, na.rm = TRUE),
-    center_long = mean(longitudes, na.rm = TRUE)
-  ))
-}
-
-
+# Run the app
 shinyApp(ui = ui, server = server)
