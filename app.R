@@ -16,10 +16,10 @@ library(lubridate)
 library(ggplot2)
 library(tidyr)
 
-# Load data, not every row becuase it is too big
-taxi_data <- read_csv("data.csv", n_max = 100000)
+# Load data, not every row because it is too big
+taxi_data <- read_csv("C:/Users/unaiz/Downloads/archive/yellow_tripdata_2015-01.csv", n_max = 100000)
 
-# Define nyc boundaries to drop locations outside the area
+# Define NYC boundaries to drop locations outside the area
 nyc_boundaries <- list(
   min_lat = 40.5774,  
   max_lat = 45.01585, 
@@ -27,21 +27,25 @@ nyc_boundaries <- list(
   max_long = -73.700272
 )
 
-# filter rows inside nyc boundaries
+# Filter rows inside NYC boundaries
 taxi_pickup <- taxi_data %>%
   filter(!is.na(pickup_latitude) & !is.na(pickup_longitude) & 
            pickup_latitude >= nyc_boundaries$min_lat & 
            pickup_latitude <= nyc_boundaries$max_lat & 
            pickup_longitude >= nyc_boundaries$min_long & 
            pickup_longitude <= nyc_boundaries$max_long) %>%
-  select(pickup_latitude, pickup_longitude, tpep_pickup_datetime)
+  select(pickup_latitude, pickup_longitude, tpep_pickup_datetime, tpep_dropoff_datetime)
 
-# use datetimes
+# Convert datetimes
 taxi_pickup$tpep_pickup_datetime <- ymd_hms(taxi_pickup$tpep_pickup_datetime)
-#taxi_pickup$tpep_dropoff_datetime <- ymd_hms(taxi_pickup$tpep_dropoff_datetime)
+taxi_pickup$tpep_dropoff_datetime <- ymd_hms(taxi_pickup$tpep_dropoff_datetime)
 
+# Calculate trip duration in minutes
+taxi_pickup <- taxi_pickup %>%
+  mutate(trip_duration = as.numeric(difftime(tpep_dropoff_datetime, tpep_pickup_datetime, units = "mins"))) %>%
+  filter(trip_duration > 0)  # Remove trips with invalid durations
 
-# shiny app
+# Shiny app
 ui <- fluidPage(
   titlePanel("NYC Taxi Data Visualization"),
   tabsetPanel(
@@ -78,23 +82,34 @@ ui <- fluidPage(
                  plotOutput("trip_plot")
                )
              )
+    ),
+    
+    tabPanel("Trip Duration",
+             sidebarLayout(
+               sidebarPanel(
+                 sliderInput("duration_bins", "Number of Bins:",
+                             min = 10, max = 100, value = 30, step = 5),
+                 numericInput("max_duration", "Maximum Duration to Display (minutes):",
+                              value = 120, min = 1)
+               ),
+               mainPanel(
+                 plotOutput("duration_histogram")
+               )
+             )
     )
   )
 )
 
 server <- function(input, output) {
   output$heatmap <- renderLeaflet({
-    # filter trips with specific day and time
     filtered_data <- taxi_pickup %>%
       filter(wday(tpep_pickup_datetime) == match(input$day_of_week, 
                                                  c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))) %>%
       filter(hour(tpep_pickup_datetime) >= input$hour_of_day[1] & hour(tpep_pickup_datetime) <= input$hour_of_day[2])
     
-    #create map
     m <- leaflet(data = filtered_data) %>%
       addProviderTiles(providers$CartoDB.Positron)
     
-    # verify there is filtered data
     if (nrow(filtered_data) > 0) {
       bounds <- getBounds(filtered_data$pickup_latitude, filtered_data$pickup_longitude)
       m <- m %>%
@@ -102,10 +117,9 @@ server <- function(input, output) {
         fitBounds(lng1 = bounds$min_long, lat1 = bounds$min_lat, lng2 = bounds$max_long, lat2 = bounds$max_lat)
     } else {
       m <- m %>%
-        setView(lng = -74.0060, lat = 40.7128, zoom = 12) # Vista por defecto
+        setView(lng = -74.0060, lat = 40.7128, zoom = 12) # Default view
     }
     
-    # heatmap
     m %>%
       addHeatmap(
         lng = ~pickup_longitude,
@@ -117,7 +131,6 @@ server <- function(input, output) {
   })
   
   observeEvent(input$update_stats, {
-    
     filtered_data <- taxi_pickup %>%
       filter(tpep_pickup_datetime >= input$date_range[1],
              tpep_pickup_datetime <= input$date_range[2])
@@ -153,7 +166,20 @@ server <- function(input, output) {
         theme(legend.title = element_blank())
     })
   })
+  
+  output$duration_histogram <- renderPlot({
+    filtered_data <- taxi_pickup %>%
+      filter(trip_duration <= input$max_duration)
+    
+    ggplot(filtered_data, aes(x = trip_duration)) +
+      geom_histogram(bins = input$duration_bins, fill = "blue", alpha = 0.7, color = "black") +
+      labs(title = "Distribution of Trip Durations",
+           x = "Trip Duration (minutes)",
+           y = "Number of Trips") +
+      theme_minimal()
+  })
 }
+                       
 
 # obtain limits to center the map
 getBounds <- function(latitudes, longitudes) {
