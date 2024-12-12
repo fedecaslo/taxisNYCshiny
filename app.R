@@ -39,7 +39,7 @@ taxi_pickup <- taxi_data %>%
            pickup_longitude <= nyc_boundaries$max_long & 
            trip_distance > 0 &
            total_amount > 0 &
-           tip_amount > 0
+           tip_amount >= 0
          ) %>%
   select(pickup_latitude, pickup_longitude, tpep_pickup_datetime, tpep_dropoff_datetime, trip_distance, total_amount, tip_amount)
 
