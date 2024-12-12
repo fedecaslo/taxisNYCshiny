@@ -6,6 +6,8 @@ if (!require("readr")) install.packages("readr")
 if (!require("lubridate")) install.packages("lubridate")
 if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("tidyr")) install.packages("tidyr")
+if (!require("reshape2")) install.packages("reshape2")
+
 
 library(shiny)
 library(leaflet)
@@ -15,6 +17,7 @@ library(readr)
 library(lubridate)
 library(ggplot2)
 library(tidyr)
+library(reshape2)
 
 # Load data, not every row because it is too big
 taxi_data <- read_csv("C:/Users/unaiz/Downloads/archive/yellow_tripdata_2015-01.csv", n_max = 100000)
@@ -33,8 +36,14 @@ taxi_pickup <- taxi_data %>%
            pickup_latitude >= nyc_boundaries$min_lat & 
            pickup_latitude <= nyc_boundaries$max_lat & 
            pickup_longitude >= nyc_boundaries$min_long & 
-           pickup_longitude <= nyc_boundaries$max_long) %>%
-  select(pickup_latitude, pickup_longitude, tpep_pickup_datetime, tpep_dropoff_datetime)
+           pickup_longitude <= nyc_boundaries$max_long & 
+           trip_distance > 0 &
+           total_amount > 0 &
+           tip_amount > 0
+         ) %>%
+  select(pickup_latitude, pickup_longitude, tpep_pickup_datetime, tpep_dropoff_datetime, trip_distance, total_amount, tip_amount)
+
+
 
 # Convert datetimes
 taxi_pickup$tpep_pickup_datetime <- ymd_hms(taxi_pickup$tpep_pickup_datetime)
@@ -44,6 +53,7 @@ taxi_pickup$tpep_dropoff_datetime <- ymd_hms(taxi_pickup$tpep_dropoff_datetime)
 taxi_pickup <- taxi_pickup %>%
   mutate(trip_duration = as.numeric(difftime(tpep_dropoff_datetime, tpep_pickup_datetime, units = "mins"))) %>%
   filter(trip_duration > 0)  # Remove trips with invalid durations
+
 
 # Shiny app
 ui <- fluidPage(
@@ -96,7 +106,24 @@ ui <- fluidPage(
                  plotOutput("duration_histogram")
                )
              )
+    ),
+    
+    tabPanel("Correlation Analysis",
+             sidebarLayout(
+               sidebarPanel(
+                 selectInput("x_var", "Select X Variable:",
+                             choices = c("trip_distance", "total_amount", "tip_amount", "trip_duration")),
+                 selectInput("y_var", "Select Y Variable:",
+                             choices = c("trip_distance", "total_amount", "tip_amount", "trip_duration")),
+                 actionButton("update_corr", "Update Scatter Plot")
+               ),
+               mainPanel(
+                 plotOutput("scatter_plot"),
+                 plotOutput("corr_heatmap")
+               )
+             )
     )
+    
   )
 )
 
@@ -166,6 +193,41 @@ server <- function(input, output) {
         theme(legend.title = element_blank())
     })
   })
+  
+  # Scatter Plot
+  observeEvent(input$update_corr, {
+    output$scatter_plot <- renderPlot({
+      ggplot(taxi_pickup, aes_string(x = input$x_var, y = input$y_var)) +
+        geom_point(alpha = 0.5, color = "blue") +
+        labs(title = paste("Scatter Plot of", input$x_var, "vs", input$y_var),
+             x = input$x_var,
+             y = input$y_var) +
+        theme_minimal()
+    })
+  })
+  
+  # Correlation Heatmap
+  output$corr_heatmap <- renderPlot({
+    # Select numerical columns for correlation
+    numeric_vars <- taxi_pickup %>%
+      select(trip_distance, total_amount, tip_amount, trip_duration) %>%
+      na.omit()
+    
+    # Compute correlation matrix
+    corr_matrix <- cor(numeric_vars)
+    
+    # Plot heatmap
+    ggplot(melt(corr_matrix), aes(Var1, Var2, fill = value)) +
+      geom_tile(color = "white") +
+      scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+      labs(title = "Correlation Heatmap",
+           x = "",
+           y = "",
+           fill = "Correlation") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+  
   
   output$duration_histogram <- renderPlot({
     filtered_data <- taxi_pickup %>%
