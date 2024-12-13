@@ -7,6 +7,8 @@ if (!require("lubridate")) install.packages("lubridate")
 if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("tidyr")) install.packages("tidyr")
 if (!require("reshape2")) install.packages("reshape2")
+if (!require("forcats")) install.packages("forcats")
+if (!require("reactable")) install.packages("reactable")
 
 
 library(shiny)
@@ -18,6 +20,8 @@ library(lubridate)
 library(ggplot2)
 library(tidyr)
 library(reshape2)
+library(forcats)
+library(reactable) # For better table formatting
 
 # Load data, not every row because it is too big
 taxi_data <- read_csv("C:/Users/unaiz/Downloads/archive/yellow_tripdata_2015-01.csv", n_max = 100000)
@@ -122,7 +126,24 @@ ui <- fluidPage(
                  plotOutput("corr_heatmap")
                )
              )
+    ),
+    
+    tabPanel("Tip Heatmap",
+             sidebarLayout(
+               sidebarPanel(
+                 selectInput("day_of_week_tip", "Select Day of the Week:",
+                             choices = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
+                             selected = "Monday"),
+                 sliderInput("hour_of_day_tip", "Select Hour of the Day:",
+                             min = 0, max = 23, value = c(0, 23), step = 1)
+               ),
+               mainPanel(
+                 leafletOutput("tip_heatmap", height = "600px")
+               )
+             )
     )
+    
+    
     
   )
 )
@@ -240,6 +261,36 @@ server <- function(input, output) {
            y = "Number of Trips") +
       theme_minimal()
   })
+  
+  output$tip_heatmap <- renderLeaflet({
+    # Filter data based on selected day and hour
+    filtered_data <- taxi_pickup %>%
+      filter(wday(tpep_pickup_datetime) == match(input$day_of_week_tip, 
+                                                 c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))) %>%
+      filter(hour(tpep_pickup_datetime) >= input$hour_of_day_tip[1] & hour(tpep_pickup_datetime) <= input$hour_of_day_tip[2]) %>%
+      filter(tip_amount > 0)  # Only consider trips with tips
+    
+    # Base map
+    m <- leaflet(data = filtered_data) %>%
+      addProviderTiles(providers$CartoDB.Positron)
+    
+    # Add heatmap
+    if (nrow(filtered_data) > 0) {
+      m <- m %>%
+        addHeatmap(
+          lng = ~pickup_longitude,
+          lat = ~pickup_latitude,
+          intensity = ~tip_amount,  # Use tip_amount as the intensity
+          blur = 20,
+          max = 1,
+          radius = 15
+        )
+    }
+    
+    m
+  })
+  
+  
 }
                        
 
