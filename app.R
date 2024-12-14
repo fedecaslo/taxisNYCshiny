@@ -11,7 +11,7 @@ library(ggplot2)
 library(dplyr)
 library(readr)
 library(forcats)
-library(reactable) # For better table formatting
+library(reactable) 
 
 # Load the dataset
 data <- read_csv("nyc_taxi.csv")
