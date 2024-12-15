@@ -4,6 +4,7 @@ if (!require("readr")) install.packages("readr")
 if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("forcats")) install.packages("forcats")
 if (!require("reactable")) install.packages("reactable")
+if (!require("ggExtra")) install.packages("ggExtra")
 
 # Load necessary libraries
 library(shiny)
@@ -12,9 +13,10 @@ library(dplyr)
 library(readr)
 library(forcats)
 library(reactable) 
+library(ggExtra)
 
 # Load the dataset
-data <- read_csv("nyc_taxi.csv")
+data <- read_csv("data.csv", n_max = 100000)
 
 # Preprocess the data
 data$tpep_pickup_datetime <- as.POSIXct(data$tpep_pickup_datetime, format = "%Y-%m-%d %H:%M:%S")
@@ -67,15 +69,16 @@ ui <- fluidPage(
                ),
                mainPanel(
                  h4("Aggregated Statistics"),
-                 reactableOutput("day_stats_table"),
-                 plotOutput("day_trip_distribution")
+                 reactableOutput("day_stats_table"),  # Table output
+                 plotOutput("day_trip_distribution")  # Plot output
                )
              )
     ),
     
+    
     # Trip Duration vs Total Amount tab
     tabPanel("Trip Duration vs Total Amount",
-             plotOutput("trip_duration_plot", height = "600px")
+             plotOutput("trip_duration_total_plot", height = "600px")
     )
   )
 )
@@ -108,7 +111,7 @@ server <- function(input, output) {
       )
   })
   
-  # Aggregated statistics for the selected day
+  # Table for aggregated statistics
   output$day_stats_table <- renderReactable({
     selected_data <- balanced_data %>%
       filter(day_of_week == input$selected_day)
@@ -137,12 +140,11 @@ server <- function(input, output) {
       bordered = TRUE,
       highlight = TRUE,
       striped = TRUE,
-      defaultPageSize = 6 # Display 6 rows per page
+      defaultPageSize = 6
     )
   })
   
-  
-  # Distribution of trips by passenger count for the selected day
+  # Distribution plot for trips
   output$day_trip_distribution <- renderPlot({
     selected_data <- balanced_data %>%
       filter(day_of_week == input$selected_day)
@@ -162,19 +164,36 @@ server <- function(input, output) {
   })
   
   # Trip Duration vs Total Amount plot
-  output$trip_duration_plot <- renderPlot({
-    ggplot(balanced_data, aes(x = trip_duration, y = total_amount)) +
-      geom_point(alpha = 0.5) +
-      geom_smooth(method = "lm", col = "blue", se = FALSE) +
+  output$trip_duration_total_plot <- renderPlot({
+    cleaned_data <- data %>%
+      filter(
+        trip_duration > 0 & trip_duration <= 500,
+        total_amount > 0 & !(trip_duration == 0 & total_amount > 0)
+      )
+    
+    # Calculate correlation coefficient
+    correlation <- cor(cleaned_data$trip_duration, cleaned_data$total_amount, use = "complete.obs")
+    
+    ggplot(cleaned_data, aes(x = trip_duration, y = total_amount, color = as.factor(passenger_count))) +
+      geom_point(alpha = 0.6) +
+      geom_smooth(method = "lm", color = "black") +
+      scale_color_manual(
+        name = "Passenger Count",
+        values = c("1" = "red", "2" = "blue", "3" = "green", "4" = "orange", "5" = "purple", "6"="brown", "7"="yellow"),
+        labels = c("Red (1 Passenger)", "Blue (2 Passengers)", "Green (3 Passengers)", 
+                   "Orange (4 Passengers)", "Purple (5 Passengers)", "Brown (6 Passengers)", "Yellow (7 Passengers)")
+      ) +
+      annotate("text", x = 50, y = 400, label = paste("Correlation: ", round(correlation, 2)), 
+               size = 5, color = "black") +
       labs(
         title = "Trip Duration vs Total Amount",
         x = "Trip Duration (minutes)",
         y = "Total Amount (USD)"
       ) +
-      theme_minimal(base_size = 14) +
-      theme(plot.title = element_text(hjust = 0.5))
+      theme_minimal() +
+      theme(plot.title = element_text(size = 16, hjust = 0.5),
+            legend.title = element_text(size = 12, face = "bold"),
+            legend.text = element_text(size = 10),
+            legend.background = element_rect(fill = alpha("white", 0.7), color = "black"),
+            legend.position = "bottom")
   })
-}
-
-# Run the app
-shinyApp(ui = ui, server = server)
