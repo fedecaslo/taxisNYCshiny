@@ -25,11 +25,15 @@ library(reactable) # For better table formatting
 library(reactable) 
 library(ggExtra)
 library(vroom)
+library(shinyWidgets)
+library(fmsb)
+library(tibble)
 
 # Load data, not every row because it is too big
 #taxi_data <- read_csv("data.csv", n_max = 100000)
-taxi_data <- read_csv("C:/Users/unaiz/Downloads/archive/yellow_tripdata_2015-01.csv", n_max = 200000)
-
+#taxi_data <- read_csv("C:/Users/unaiz/Downloads/archive/yellow_tripdata_2015-01.csv", n_max = 200000)
+taxi_data <- read_csv("data/yellow_tripdata_2015-01_short.csv")
+nyc_taxi_neigh <- read_csv("data/yellow_tripdata_2015-01_short_neigh.csv")
 
 
 # Read a random sample (turns out it is not necessary, there is no pattern in the csv)
@@ -112,31 +116,31 @@ ui <- fluidPage(
       fluidRow(
         column(
           width = 12,
-          h2("Welcome to the NYC Taxi Data Visualization App!"),
-          p("Taxis play a vital role in urban transportation, offering a reliable and efficient means 
-            of travel. In the United States, particularly in New York City, taxis are used significantly 
-            more than in many European countries, reaching staggering numbers of more than 400.000 taxi 
-            rides per day in 2015. Their ubiquity and accessibility make them an integral part of daily 
-            commuting and tourism alike, making it really important to explore the best way to distribute 
-            them around the city for example, to avoid excessive traffic and organise them in the best way 
-            possible."),
-          p("This app will let you freely explore the distribution and relation of different labels, giving 
-            the ability to reach conclusions for yourself."),
-          p("Key features include:"),
+          h2("Welcome to the NYC Taxi Data Visualization App!"), # Ensure the text here is a single string
+          p("New York City's taxi system is a dynamic and essential aspect of urban mobility. With more than 400,000 trips daily in 2015, these iconic yellow cabs serve as one of the most frequently used modes of transportation. The vastness and complexity of the city's traffic require a well-organized and efficient approach, making the analysis of taxi data a powerful tool for optimizing operations."),
+          p("Our app gives you the ability to explore and visualize various aspects of NYC's taxi data, offering insights into trip statistics, distribution patterns, and correlations. Whether you're a researcher, data enthusiast, or someone interested in urban transportation, this app provides an interactive and intuitive interface for uncovering key trends and making data-driven decisions."),
+          p("Here are some of the key features you can explore:"),
           tags$ul(
-            tags$li("Heatmaps for visualizing taxi pickups and tips."),
-            tags$li("Daily trip statistics for comparing trips on different days."),
-            tags$li("Distribution of trip durations."),
-            tags$li("Correlation analysis between trip metrics.")
+            tags$li("Database Preview: Preview the dataset with variable descriptions for easy understanding."), # Ensure text inside li is a single string
+            tags$li("Passenger Proportion by Day of the Week: View the distribution of passengers across the week in a bar chart."),
+            tags$li("Average Trip Distance by Passenger Count: Analyze how passenger count affects the average trip distance, based on the day of the week."),
+            tags$li("Taxi Pickup Heatmap: Visualize the density of taxi pickups across NYC."),
+            tags$li("Comparing Trip Counts Across Two Days of the Week: See a comparison of the number of trips for any two days."),
+            tags$li("Correlation Analysis: Explore relationships between key variables, including scatter plots and correlation matrices."),
+            tags$li("Radar Chart of Mean Tips by Neighborhood: Get insights into tipping patterns across NYC's neighborhoods.")
           ),
+          p("The app allows you to interact with the data to draw your own conclusions, making it an excellent tool for anyone interested in exploring the intersection of urban transportation and data science."),
           img(
             src = "yellow-cab.png", 
             alt = "NYC Taxi", 
-            style = "width: 100%; max-width: 600px; margin-top: 20px;"
-          )
+            style = "width: 100%; max-width: 600px; margin-top: 20px; border-radius: 8px; border: 2px solid #f4f4f4; box-shadow: 0 4px 8px rgba(0,0,0,0.1);"
+          ),
+          p("Explore the data and see how the city's taxi system works in real-time!")
         )
       )
-    ),
+    )
+    ,
+    
     
     tabPanel(
       div(icon("table"), "Database Preview"),
@@ -172,7 +176,7 @@ ui <- fluidPage(
           )
         ),
         tabPanel(
-          "Field Descriptions",
+          "Variable Descriptions",
           fluidPage(
             fluidRow(
               column(12,
@@ -188,12 +192,30 @@ ui <- fluidPage(
     
     
     # Proportion visualization tab
-    tabPanel("Passenger Proportion by Day",
+    tabPanel(div(icon("chart-simple"), "Passenger Count by Day"),
+             p(),
+             # Question Box Section
+             div(
+               style = "background-color: #e0f7fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; width: 100%; max-width: 800px; margin: 0 auto;",
+               h3(style = "text-align: center; font-weight: bold; color: #00796b;", "How common is it for people to share taxis? Does this depend on the day of the week?"),
+               p(style = "text-align: center; color: #004d40; font-size: 16px;", 
+                 "By analyzing the data, it seems like on weekdays its more rare for people to share taxis than on weekends. This is likely due to gropus of friends going to and returning from parties.")
+             ),
+             p(),
              plotOutput("proportion_plot", height = "600px")
     ),
     
     # Detailed insights tab
-    tabPanel("Detailed Insights by Day",
+    tabPanel(div(icon("chart-simple"), "Trip Distance by Passenger Count"),
+             p(),
+             # Question Box Section
+             div(
+               style = "background-color: #e0f7fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; width: 100%; max-width: 800px; margin: 0 auto;",
+               h3(style = "text-align: center; font-weight: bold; color: #00796b;", "Do fewer passengers in a taxi tend to do longer trips? Is this influenced by the day of the week?"),
+               p(style = "text-align: center; color: #004d40; font-size: 16px;", 
+                 "By analyzing the data, no mayor differences can be found.")
+             ),
+             p(),
              sidebarLayout(
                sidebarPanel(
                  selectInput(
@@ -214,7 +236,16 @@ ui <- fluidPage(
     
     
     
-    tabPanel("Pickups Heatmap",
+    tabPanel(div(icon("map"), "Pickups Heatmap"),
+             p(),
+             # Question Box Section
+             div(
+               style = "background-color: #e0f7fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; width: 100%; max-width: 800px; margin: 0 auto;",
+               h3(style = "text-align: center; font-weight: bold; color: #00796b;", "Where do most pick ups take place? Are there different patterns at different times or on different days?"),
+               p(style = "text-align: center; color: #004d40; font-size: 16px;", 
+                 "From the heatmap we can observe that most pickups take place in Manhattan. There are also some focuses at important places like both airports (JFK and LaGuardia). This seems to be the pattern across days and time.")
+             ),
+             p(),
              sidebarLayout(
                sidebarPanel(
                  selectInput("day_of_week", "Select Day of the Week:",
@@ -229,7 +260,16 @@ ui <- fluidPage(
              )
     ),
     
-    tabPanel("Daily Trip Statistics",
+    tabPanel(div(icon("chart-simple"), "Trip Counts Across Two Days of the Week"),
+             p(),
+             # Question Box Section
+             div(
+               style = "background-color: #e0f7fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; width: 100%; max-width: 800px; margin: 0 auto;",
+               h3(style = "text-align: center; font-weight: bold; color: #00796b;", "Are taxis specially demanded on some days of the week?"),
+               p(style = "text-align: center; color: #004d40; font-size: 16px;", 
+                 "By comparing different days of the week in the barplots one can observe that Fridays and Saturdays have considerably more trips than other days of the week.")
+             ),
+             p(),
              sidebarLayout(
                sidebarPanel(
                  dateRangeInput("date_range", "Select Date Range:",
@@ -251,7 +291,16 @@ ui <- fluidPage(
     
     
     
-    tabPanel("Correlation Analysis",
+    tabPanel(div(icon("magnifying-glass-chart"), "Correlation Analysis"),
+             p(),
+             # Question Box Section
+             div(
+               style = "background-color: #e0f7fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; width: 100%; max-width: 800px; margin: 0 auto;",
+               h3(style = "text-align: center; font-weight: bold; color: #00796b;", "Which variables are highly correlated? How do they compare?"),
+               p(style = "text-align: center; color: #004d40; font-size: 16px;", 
+                 "The most correlated variables are fare_amount, total_amount and trip_distance. This makes sense, because the longer the trip, the more expensive it is. Surprisingly, trip_duration and trip_distance do not seem too correlated to each other. This is likely due to heterocedastity caused by traffic jams, leading to high variances in trip duration.")
+             ),
+             p(),
              sidebarLayout(
                sidebarPanel(
                  selectInput("x_var", "Select X Variable:",
@@ -267,17 +316,30 @@ ui <- fluidPage(
              )
     ),
     
-    tabPanel("Tip Heatmap",
+    tabPanel(div(icon("chart-pie"), "Tip Amount by Pickup Neighborhood"),
+             p(),
+             # Question Box Section
+             div(
+               style = "background-color: #e0f7fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; width: 100%; max-width: 800px; margin: 0 auto;",
+               h3(style = "text-align: center; font-weight: bold; color: #00796b;", "Where do clients leave the biggest tips?"),
+               p(style = "text-align: center; color: #004d40; font-size: 16px;", 
+                 "It seems like the biggest tips come from clients from Queens. This could be because it is far away, so the trips are more expensive in general. However, the most likely hypothesis is that Queen has very wealthy parts such as Forest Hills, Bayside, Douglaston, and select areas of Astoria. Therefore, clients have a lot of money and are more generous. This is backed by the fact that the most humble neighborhood, the Bronx, leaves the least tips.")
+             ),
+             p(),
              sidebarLayout(
                sidebarPanel(
-                 selectInput("day_of_week_tip", "Select Day of the Week:",
-                             choices = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
-                             selected = "Monday"),
-                 sliderInput("hour_of_day_tip", "Select Hour of the Day:",
-                             min = 0, max = 23, value = c(0, 23), step = 1)
+                 pickerInput(
+                   inputId = "selected_neighborhoods",
+                   label = "Select Neighborhoods to Plot:",
+                   #choices = unique(nyc_taxi_neigh$neigh_origin),
+                   #choices = c("Manhattan","Queens","Brooklyn","Bronx","Staten Island"),
+                   choices = na.omit(unique(nyc_taxi_neigh$neigh_origin)),
+                   multiple = TRUE,
+                   options = pickerOptions(actionsBox = TRUE)
+                 )
                ),
                mainPanel(
-                 leafletOutput("tip_heatmap", height = "600px")
+                 plotOutput("tip_plot")
                )
              )
     )
@@ -287,7 +349,7 @@ ui <- fluidPage(
   )
 )
 
-server <- function(input, output) {
+server <- function(input, output, session) {
   
   # Reactive data for filtering and limiting rows
   filtered_data <- reactive({
@@ -487,33 +549,65 @@ server <- function(input, output) {
   
   
   
-  output$tip_heatmap <- renderLeaflet({
-    # Filter data based on selected day and hour
-    filtered_data <- taxi_pickup %>%
-      filter(wday(tpep_pickup_datetime) == match(input$day_of_week_tip, 
-                                                 c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))) %>%
-      filter(hour(tpep_pickup_datetime) >= input$hour_of_day_tip[1] & hour(tpep_pickup_datetime) <= input$hour_of_day_tip[2]) %>%
-      filter(tip_amount > 0)  # Only consider trips with tips
+  
+  # Dynamically update the choices for neighborhoods
+  observe({
+    updatePickerInput(session,
+                      inputId = "selected_neighborhoods",
+                      choices = na.omit(unique(nyc_taxi_neigh$neigh_origin))
+    )
+  })
+  
+  output$tip_plot <- renderPlot({
+    # Filter data for selected neighborhoods
+    filtered_data <- nyc_taxi_neigh %>%
+      filter(neigh_origin %in% input$selected_neighborhoods)
     
-    # Base map
-    m <- leaflet(data = filtered_data) %>%
-      addProviderTiles(providers$CartoDB.Positron)
-    
-    # Add heatmap
-    if (nrow(filtered_data) > 0) {
-      m <- m %>%
-        addHeatmap(
-          lng = ~pickup_longitude,
-          lat = ~pickup_latitude,
-          intensity = ~tip_amount,  # Use tip_amount as the intensity
-          blur = 20,
-          max = 1,
-          radius = 15
-        )
+    # Check if there's data to plot
+    if (nrow(filtered_data) == 0) {
+      plot.new()
+      title("No data available for selected neighborhoods")
+      return()
     }
     
-    m
+    # Aggregate mean tip amount by neighborhood
+    aggregated_data <- filtered_data %>%
+      group_by(neigh_origin) %>%
+      summarize(mean_tip = mean(tip_amount, na.rm = TRUE)) %>%
+      arrange(desc(mean_tip))
+    
+    # Prepare data for radar chart
+    radar_data <- aggregated_data %>%
+      column_to_rownames(var = "neigh_origin") %>%
+      as.data.frame()  # Ensure it's a data frame
+    
+    # Add max and min rows for radar chart
+    max_tip <- max(radar_data$mean_tip, na.rm = TRUE) * 1.1
+    min_tip <- 0
+    radar_data <- rbind(rep(max_tip, ncol(radar_data)),
+                        rep(min_tip, ncol(radar_data)),
+                        t(radar_data))
+    
+    # Ensure radar_data is a proper data frame
+    radar_data <- as.data.frame(radar_data)
+    
+    # Radar Chart
+    radarchart(
+      radar_data,
+      axistype = 1,
+      pcol = rgb(0.2, 0.5, 0.5, 0.9),
+      pfcol = rgb(0.2, 0.5, 0.5, 0.5),
+      plwd = 2,
+      cglcol = "grey",
+      cglty = 1,
+      axislabcol = "grey",
+      caxislabels = seq(0, max_tip, length.out = 5),
+      cglwd = 0.8,
+      vlcex = 0.8
+    )
+    title("Radar Chart of Mean Tips by Neighborhood")
   })
+  
   
   # Proportion plot: Passenger count by day of week
   output$proportion_plot <- renderPlot({
