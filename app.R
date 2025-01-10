@@ -615,9 +615,10 @@ server <- function(input, output, session) {
       axislabcol = "grey",
       caxislabels = round(seq(0, max_tip, length.out = 5), 2),
       cglwd = 0.8,
-      vlcex = 0.8
+      cglcex = 1.7, # Increase size of axis labels
+      vlcex = 1.7   # Increase size of variable labels
     )
-    title("Radar Chart of Mean Tips by Neighborhood")
+    title("Radar Chart of Mean Tips by Neighborhood", cex.main = 1.7)
   })
   
   

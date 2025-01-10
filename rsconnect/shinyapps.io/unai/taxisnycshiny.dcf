@@ -5,7 +5,7 @@ account: unai
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 13695483
-bundleId: 9633397
+bundleId: 9633452
 url: https://unai.shinyapps.io/taxisnycshiny/
 version: 1
 asMultiple: FALSE
