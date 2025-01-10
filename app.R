@@ -135,7 +135,17 @@ ui <- fluidPage(
             alt = "NYC Taxi", 
             style = "width: 100%; max-width: 600px; margin-top: 20px; border-radius: 8px; border: 2px solid #f4f4f4; box-shadow: 0 4px 8px rgba(0,0,0,0.1);"
           ),
-          p("Explore the data and see how the city's taxi system works in real-time!")
+          p(),
+          p("This app has been developed using the Shiny package for R."),
+          p("Group 14 of the 'Data Visualization' subject in Universidad Politécnica de Madrid."),
+          p("Group Participants:"),
+          tags$ul(
+            tags$li("Federico Castejón"),
+            tags$li("Julián López"),
+            tags$li("Aritz Martín"),
+            tags$li("Unai Zuazo")
+            
+          )
         )
       )
     )
@@ -501,7 +511,7 @@ server <- function(input, output, session) {
     })
   })
   
-  # Scatter Plot with Outlier Removal
+  # Scatter Plot with Outlier Removal and Regression Line
   observeEvent(input$update_corr, {
     output$scatter_plot <- renderPlot({
       # Dynamically filter the data to remove outliers based on percentiles
@@ -511,9 +521,10 @@ server <- function(input, output, session) {
             between(!!sym(input$y_var), quantile(!!sym(input$y_var), 0.01, na.rm = TRUE), quantile(!!sym(input$y_var), 0.99, na.rm = TRUE))
         )
       
-      # Create the scatterplot
+      # Create the scatterplot with regression line
       ggplot(filtered_data, aes_string(x = input$x_var, y = input$y_var)) +
-        geom_point(alpha = 0.5, color = "blue") +
+        geom_point(alpha = 0.5, color = "blue") + # Scatter points
+        geom_smooth(method = "lm", color = "red", se = FALSE) + # Regression line
         labs(
           title = paste("Scatter Plot of", input$x_var, "vs", input$y_var),
           x = input$x_var,
@@ -522,6 +533,7 @@ server <- function(input, output, session) {
         theme_minimal()
     })
   })
+  
   
   
   # Correlation Heatmap
@@ -601,7 +613,7 @@ server <- function(input, output, session) {
       cglcol = "grey",
       cglty = 1,
       axislabcol = "grey",
-      caxislabels = seq(0, max_tip, length.out = 5),
+      caxislabels = round(seq(0, max_tip, length.out = 5), 2),
       cglwd = 0.8,
       vlcex = 0.8
     )
