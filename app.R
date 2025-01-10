@@ -339,7 +339,7 @@ ui <- fluidPage(
                  )
                ),
                mainPanel(
-                 plotOutput("tip_plot")
+                 plotOutput("tip_plot", height = "650px", width = "100%")
                )
              )
     )
